@@ -90,6 +90,11 @@ function ReverseProxy {
       fi
 
       printf "Localizing proxy-config... "
+      for ALIAS in "${SVCALIASES[@]}"
+      do
+         SVCALIASES+=('~(?<repo>.+)\.'${ALIAS})
+      done
+
       sed -i '{
          s/__AF-FQDN__/'"${AFPROXFQDN}"'/g
          /^[ 	]*server_name/s/;$/ '"${SVCALIASES[*]}"';/
