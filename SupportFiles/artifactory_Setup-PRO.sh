@@ -62,6 +62,25 @@ function err_exit {
 }
 
 ##
+## Tweak SEL as necessary
+function SelMods {
+   printf "Ensure httpd processes can use network... "
+   setsebool -P httpd_can_network_connect 1 && echo "Success" || \
+     err_exit "Failed setting httpd network boolean"
+
+   if [ ! "${1}" = "" ]
+   then
+      printf "Allow processes running httpd context to use NFS... "
+      setsebool -P httpd_use_nfs 1 && echo "Success" || \
+        err_exit "Failed setting httpd/NFS SEL-boolean"
+
+      printf "Alow httpd rw access to %s... " "${1}"
+      semanage fcontext -a -t "httpd_sys_rw_content_t" "${1}(/.*)?" && \
+        echo "Success" || err_exit "Unable to give httpd rw access to ${1}"
+   fi
+}
+
+##
 ## Install and configure Nginx-based reverse-proxy
 function ReverseProxy {
    # Install Nginx
@@ -118,8 +137,23 @@ function ReverseProxy {
         "${NGINXDIR}"/nginx.conf
    fi
 
-   # Set suitable SELinux Policy
-   setsebool -P httpd_can_network_connect 1
+   # Lasso SELinux as necessary
+   if [[ $(getenforce) = Disabled ]]
+   then
+      "SELinux not enabled: no need to tweak"
+   else
+      # Check for proxy-temp dirs to except
+      if [[ $(grep -q proxy_temp_path "${PROXCONF}" )$? -eq 0 ]]
+      then
+         local PROXTMPDIR=$(
+             awk '/proxy_temp_path/{ print $2 }' "${PROXCONF}" | \
+               sed -e 's/;$//' -e 's/\/$//'
+            )
+      fi
+
+      # Call routine to tweak SEL config
+      SelMods "${PROXTMPDIR}"
+   fi
 
    # Enable and start Nginx
    systemctl enable nginx
