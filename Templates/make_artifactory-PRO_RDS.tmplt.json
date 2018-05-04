@@ -1,12 +1,17 @@
 {
   "AWSTemplateFormatVersion": "2010-09-09",
   "Conditions": {
-    "SetIops": { "Fn::Equals": [ { "Ref": "DbStorageType" }, "io1" ] },
+    "SetIops": {
+      "Fn::Equals": [ { "Ref": "DbStorageType" }, "io1" ]
+    },
     "SetNodeName": {
       "Fn::Not": [
-        {
-          "Fn::Equals": [ { "Ref": "DbNodeName" }, "" ]
-        }
+        { "Fn::Equals": [ { "Ref": "DbNodeName" }, "" ] }
+      ]
+    },
+    "UseDbSnapshot": {
+      "Fn::Not": [
+        { "Fn::Equals": [ { "Ref": "DbSnapshotId" }, "" ] }
       ]
     }
   },
@@ -17,9 +22,16 @@
     "RdsEndpointAddress": {
       "Description": "RDS DB's endpoint FQDN.",
       "Export": {
-        "Name" : { "Fn::Sub": "${AWS::StackName}-RdsEndpointAddress" }
+        "Name": {
+          "Fn::Sub": "${AWS::StackName}-RdsEndpointAddress"
+        }
       },
-      "Value": { "Fn::GetAtt" : [ "RDSdb", "Endpoint.Address" ] }
+      "Value": {
+        "Fn::GetAtt": [
+          "RDSdb",
+          "Endpoint.Address"
+        ]
+      }
     }
   },
   "Parameters": {
@@ -28,6 +40,7 @@
       "Type": "String"
     },
     "DbAdminPass": {
+      "Default": "",
       "Description": "Password of the Artifactory master database-user.",
       "NoEcho": "True",
       "Type": "String"
@@ -39,6 +52,40 @@
       "MaxValue": "6144",
       "MinValue": "5",
       "Type": "Number"
+    },
+    "DbInstanceName": {
+      "Default": "",
+      "Description": "Instance-name of the Artifactory database.",
+      "Type": "String"
+    },
+    "DbInstanceType": {
+      "AllowedValues": [
+        "db.t2.micro",
+        "db.t2.small",
+        "db.t2.medium",
+        "db.t2.large",
+        "db.t2.xlarge",
+        "db.t2.2xlarge",
+        "db.m4.large",
+        "db.m4.xlarge",
+        "db.m4.2xlarge",
+        "db.m4.4xlarge",
+        "db.m3.medium",
+        "db.m3.large",
+        "db.m3.xlarge",
+        "db.m3.2xlarge",
+        "db.r4.large",
+        "db.r4.xlarge",
+        "db.r4.2xlarge",
+        "db.r4.4xlarge",
+        "db.r3.large",
+        "db.r3.xlarge",
+        "db.r3.2xlarge",
+        "db.r3.4xlarge"
+      ],
+      "Default": "db.t2.small",
+      "Description": "Amazon RDS instance type",
+      "Type": "String"
     },
     "DbIsMultiAz": {
       "AllowedValues": [
@@ -53,34 +100,24 @@
       "Description": "NodeName of the Artifactory database.",
       "Type": "String"
     },
-    "DbInstanceName": {
-      "Description": "Instance-name of the Artifactory database.",
-      "Type": "String"
-    },
-    "DbInstanceType": {
-      "AllowedValues": [
-        "db.t2.micro",
-        "db.t2.small",
-        "db.t2.medium",
-        "db.t2.large",
-        "db.m3.medium",
-        "db.m3.large",
-        "db.m3.xlarge",
-        "db.m3.2xlarge",
-        "db.m4.large",
-        "db.m4.xlarge",
-        "db.m4.2xlarge",
-        "db.m4.4xlarge"
-      ],
-      "Default": "db.t2.small",
-      "Description": "Amazon RDS instance type",
-      "Type": "String"
-    },
     "DbSecurityGroup": {
       "Description": "List of security groups to apply to the RDS database.",
       "Type": "List<AWS::EC2::SecurityGroup::Id>"
     },
-    "DbStorageType" : {
+    "DbSnapshotId": {
+      "AllowedPattern": "^$|^arn:.*$",
+      "Default": "",
+      "Description": "(Optional) RDS snapshot-ARN to clone new database from.",
+      "Type": "String"
+    },
+    "DbStorageIops": {
+      "Default": "1000",
+      "Description": "Provisioned-IOPS of storage to used to host DB-data.",
+      "MaxValue": "30000",
+      "MinValue": "1000",
+      "Type": "Number"
+    },
+    "DbStorageType": {
       "AllowedValues": [
         "standard",
         "gp2",
@@ -90,23 +127,18 @@
       "Description": "Type of storage used to host DB-data.",
       "Type": "String"
     },
-    "DbStorageIops" : {
-      "Default": "1000",
-      "Description": "Provisioned-IOPS of storage to used to host DB-data.",
-      "MaxValue": "30000",
-      "MinValue": "1000",
-      "Type": "Number"
-    },
-    "DbSubnets" : {
-      "Type" : "List<AWS::EC2::Subnet::Id>",
-      "Description" : "Select at least two subnets, each in different Availability Zones"
+    "DbSubnets": {
+      "Description": "Select at least two subnets, each in different Availability Zones",
+      "Type": "List<AWS::EC2::Subnet::Id>"
     },
     "PgsqlVersion": {
       "AllowedValues": [
+        "9.6.6",
         "9.6.5",
         "9.6.3",
         "9.6.2",
         "9.6.1",
+        "9.5.10",
         "9.5.9",
         "9.5.7",
         "9.5.6",
@@ -139,16 +171,16 @@
             { "Ref": "AWS::NoValue" }
           ]
         },
-        "DBName": { "Ref": "DbInstanceName" },
-        "DBSubnetGroupName" : { "Ref" : "RDSdbSubnetGroup" },
+        "DBName": {
+          "Fn::If": [
+            "UseDbSnapshot",
+            { "Ref": "AWS::NoValue" },
+            { "Ref": "DbInstanceName" }
+          ]
+        },
+        "DBSubnetGroupName": { "Ref": "RDSdbSubnetGroup" },
         "Engine": "postgres",
         "EngineVersion": { "Ref": "PgsqlVersion" },
-        "MasterUsername": { "Ref": "DbAdminName" },
-        "MasterUserPassword": { "Ref": "DbAdminPass" },
-        "MultiAZ": { "Ref": "DbIsMultiAz" },
-        "PreferredBackupWindow": "23:30-00:00",
-        "PreferredMaintenanceWindow": "sun:00:30-sun:01:00",
-        "StorageType": { "Ref": "DbStorageType" },
         "Iops": {
           "Fn::If": [
             "SetIops",
@@ -156,17 +188,42 @@
             { "Ref": "AWS::NoValue" }
           ]
         },
+        "MasterUserPassword": {
+          "Fn::If": [
+            "UseDbSnapshot",
+            { "Ref": "AWS::NoValue" },
+            { "Ref": "DbAdminPass" }
+          ]
+        },
+        "MasterUsername": { "Ref": "DbAdminName" },
+        "MultiAZ": { "Ref": "DbIsMultiAz" },
+        "PreferredBackupWindow": "23:30-00:00",
+        "PreferredMaintenanceWindow": "sun:00:30-sun:01:00",
         "PubliclyAccessible": "false",
+        "DBSnapshotIdentifier": {
+          "Fn::If": [
+            "UseDbSnapshot",
+            { "Ref": "DbSnapshotId" },
+            { "Ref": "AWS::NoValue" }
+          ]
+        },
+        "StorageType": { "Ref": "DbStorageType" },
+        "Tags": [
+          {
+            "Key": "Description",
+            "Value": "Artifactory PgSQL database"
+          }
+        ],
         "VPCSecurityGroups": { "Ref": "DbSecurityGroup" }
       },
       "Type": "AWS::RDS::DBInstance"
     },
     "RDSdbSubnetGroup": {
-      "Type" : "AWS::RDS::DBSubnetGroup",
-      "Properties" : {
-        "DBSubnetGroupDescription" : "Subnets available for the RDS DB Instance",
-        "SubnetIds" : { "Ref" : "DbSubnets" }
-      }
+      "Properties": {
+        "DBSubnetGroupDescription": "Subnets available for the RDS DB Instance",
+        "SubnetIds": { "Ref": "DbSubnets" }
+      },
+      "Type": "AWS::RDS::DBSubnetGroup"
     }
   }
 }
